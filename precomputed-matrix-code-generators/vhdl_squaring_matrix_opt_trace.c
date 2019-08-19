@@ -35,6 +35,7 @@ uint8 vhdl_header[] = "---------------------------------------------------------
 -- Additional Comments: \n\
 --\n\
 ----------------------------------------------------------------------------------\n\
+library ieee;\n\
 use ieee.std_logic_1164.all;\n\
 use ieee.numeric_std.all;\n\
 \n\
