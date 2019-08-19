@@ -16,6 +16,43 @@
 
 typedef unsigned char uint8;
 
+uint8 vhdl_header[] = "----------------------------------------------------------------------------------\n\
+-- Company: Guenda Tecnología de México\n\
+-- Engineer: García-Hernández, Rommel\n\
+-- \n\
+-- Create Date:    23:16:16 08/13/2019 \n\
+-- Design Name: \n\
+-- Module Name:    %s - Behavioral \n\
+-- Project Name: \n\
+-- Target Devices: \n\
+-- Tool versions: \n\
+-- Description: \n\
+--\n\
+-- Dependencies: \n\
+--\n\
+-- Revision: \n\
+-- Revision 0.01 - File Created\n\
+-- Additional Comments: \n\
+--\n\
+----------------------------------------------------------------------------------\n\
+use ieee.std_logic_1164.all;\n\
+use ieee.numeric_std.all;\n\
+\n\
+entity %s is\n\
+    generic(gf:integer := 5);\n\
+    port(\n\
+        x : in  std_logic_vector(gf-1 downto 0);\n\
+        r : out std_logic_vector(gf-1 downto 0)\n\
+    );\n\
+end %s;\n\
+\n\
+architecture behavioral of %s is\n\
+    constant trace_size : integer := %d;\n\
+    signal xt: std_logic_vector(trace_size-1 downto 0);\n\
+begin\n";
+
+uint8 vhdl_footer[] = "end behavioral;";
+
 uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, int mt, int nt, int index);
 uint8 **trino_squaring_matrix(int);
 uint8 **penta_squaring_matrix(int);
@@ -30,8 +67,7 @@ uint8 **squaring_matrix(uint8 **, int, int);
 uint8 *new_array(int );
 int **allocate_int_matrix(int, int);
 int compare(uint8 *, uint8 *, int);
-void multiply(int, uint8 **, int **, uint8 *, int m, int n, int mt, int nt, uint8 *);
-void exp_type1(int);
+void multiply(int, int, uint8 **, int **, uint8 *, int m, int n, int mt, int nt, uint8 *);
 void free_uchar_matrix(uint8 **M, int m);
 void free_int_matrix(int **M, int m);
 void show_square_matrix_downto(uint8 **, int);
@@ -62,7 +98,7 @@ int main(int argc, uint8 *argv[]) {
         }
     }
     if (wrong_arguments) {
-        printf("Usage: program 5|163|233|283|409|571 matrix_original matrix_test1 trace_test1 matrix_test2 trace_test2 ... matrix_testn trace_testn\n");
+        printf("Usage: program 5|163|233|283|409|571 matrix_original matrix_opt matrix_trace\n");
     } else {
         test_vector = (uint8 *) malloc(field * sizeof(uint8));
         gold_vector = (uint8 *) malloc(field * sizeof(uint8));
@@ -71,11 +107,7 @@ int main(int argc, uint8 *argv[]) {
             printf("%d", test_vector[i]);
         } printf("\n");
         m = field;
-		n = field;
-        A = allocate_uchar_matrix(field, field);
-        load_uchar_matrix_csv(argv[2], A, m, n);
-        multiply(field,A,T,test_vector,m,n,mt,nt,gold_vector);
-        free_uchar_matrix(A, m);
+        n = field;
         if (argc >= 4) {
             result_vector = (uint8 *) malloc(field * sizeof(uint8));
             for (test_number = 3, test_count = 1; test_number < argc; test_number += 2, test_count++) {
@@ -86,7 +118,7 @@ int main(int argc, uint8 *argv[]) {
                 T = allocate_int_matrix(mt,nt);
                 load_uchar_matrix_csv(argv[test_number],A,m,n);
                 load_int_matrix_csv(argv[test_number + 1],T,mt,nt);
-                multiply(field,A,T,test_vector,m,n,mt,nt,result_vector);
+                multiply(field,el,A,T,test_vector,m,n,mt,nt,result_vector);
                 result = compare(gold_vector,result_vector,field);
                 free_uchar_matrix(A,m);
                 free_int_matrix(T,mt);
@@ -113,48 +145,79 @@ int main(int argc, uint8 *argv[]) {
     return 0;
 }
 
-void multiply(int gf, uint8 **A, int **Trace, uint8 *testv, int m, int n, int mt, int nt, uint8 *resultv) {
-    int i = 0, j = 0, idx = 0;
+void multiply(int gf, int exp, uint8 **A, int **Trace, uint8 *testv, int m, int n, int mt, int nt, uint8 *resultv) {
+    int i = 0, j = 0, idx = 0, xt0_idx = 0, xt1_idx = 0, var_counter = 0;
     int limit_m, limit_n;
-    uint8 *tracev = NULL;
-    uint8 a, b;
+    FILE *fp = NULL;
+    char file_name[64] = "";
+    char entity_name[64] = "";
+    char xt0[10],xt1[10];
+    uint8 a, b, generate_code = FALSE;
+    
     limit_m = (m > gf)?m:gf;
     limit_n = (n > gf)?n:gf;
+
+    if (Trace) {generate_code = TRUE;}
+    if (generate_code) {
+        sprintf(file_name,"squaring_block_opt_%d_%d.vhd",gf,exp);
+        sprintf(entity_name,"squaring_block_opt_%d_%d",gf,exp);
+        printf("generated %s.\n", file_name);
+        fp = fopen(file_name, "w+");
+        fprintf(fp,vhdl_header,entity_name,entity_name,entity_name,entity_name,mt);
+    }
+    
     if (Trace) {
         printf("Construct trace vector with m = %d, n = %d\n", mt, nt);
-        tracev = (uint8 *) malloc(sizeof(uint8) * mt);
-        for (i = 0; i < mt; i++) {
-            tracev[i] = 0x05;
-        }
         for (idx = 0; idx < mt; idx++) {
-            compute_trace_element(gf,Trace,tracev,testv,mt,nt,idx);
+            strcpy (xt0, "x");
+            strcpy (xt1, "x");
+            xt0_idx = Trace[idx][0];
+            xt1_idx = Trace[idx][1];
+            if (Trace[idx][0] >= gf) {
+                strcpy (xt0, "xt");
+                xt0_idx = xt0_idx - gf;
+            }
+            if (Trace[idx][1] >= gf) {
+                strcpy (xt1, "xt");
+                xt1_idx = xt1_idx - gf;
+            }
+            fprintf(fp,"    xt(%d) <= %s(%d) xor %s(%d);\n",idx,xt0,xt0_idx,xt1,xt1_idx);
         }
-        for (idx = 0; idx < mt; idx++) {
-            if ((tracev[idx] != 0) && (tracev[idx] != 1)) {
-                printf("trace_vector[%d] != 1|0, %d", idx, tracev[idx]);
+	fprintf(fp,"\n");
+    }
+    
+    for (i = 0; i < m; i++) {
+        var_counter = 0;
+        fprintf(fp,"    r(%d) <= ",i);
+        for (j = 0; j < n-1; j++) {
+            if (1 == A[i][j]) {
+                if (var_counter != 0) {
+                    fputs(" xor ",fp);
+                }
+                if (j < gf) {
+                    fprintf(fp,"x(%d)",j);
+                } else {
+                    fprintf(fp,"xt(%d)",j-gf);
+                }
+                var_counter++;
             }
         }
-    }
-    for (i = 0; i < limit_m; i++) {
-        resultv[i] = 0;
-        for (j = 0; j < limit_n; j++) {
+        if (1 == A[i][j]) {
+            if (var_counter != 0) {
+                fputs(" xor ",fp);
+            }
             if (j < gf) {
-                resultv[i] ^= (A[i][j] * testv[j]);
-			    //if (0 == i && A[i][j] == 1) {
-                //    printf("(%d)%d*%d ", j, A[i][j], testv[j]);
-			    //}
+                fprintf(fp,"x(%d)",j);
             } else {
-                resultv[i] ^= (A[i][j] * tracev[j - gf]);
-			    //if (0 == i && (A[i][j] == 1 || j == 667)) {
-                //   printf("(%d)%d*%d ", j, A[i][j], tracev[j - gf]);
-			    //}
+                fprintf(fp,"xt(%d)",j-gf);
             }
         }
-		//if (0 == i) {
-		//	printf("\n>>>\n");
-		//}
+        fprintf(fp,";\n",i);
     }
-    if (tracev) free(tracev);
+    if(generate_code && fp){
+        fputs(vhdl_footer,fp);
+        fclose(fp);
+    }
 }
 
 uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, int mt, int nt, int index) {
@@ -163,8 +226,8 @@ uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, in
     /*
     if ((index-163) < 0 || (index-163) >= mt) {
         printf("Error. index = %d", (index-163));
-	}
-	*/
+    }
+    */
     index_a = Trace[index][0];
     index_b = Trace[index][1];
     if (index_a < gf) {
@@ -172,10 +235,10 @@ uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, in
         //printf("%d ", index_a);
     } else {
         if ((0 == tracev[index_a - gf]) || (1 == tracev[index_a - gf])) {
-			//printf("has data a !!\n");
+            //printf("has data a !!\n");
             a = tracev[index_a - gf];
         } else {
-			//printf("Recursion a !!\n");
+            //printf("Recursion a !!\n");
             a = compute_trace_element(gf, Trace, tracev, testv, mt, nt, index_a - gf);
             //tracev[index_a - gf] = a;
         }
@@ -185,7 +248,7 @@ uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, in
         //printf("%d ", index_b);
     } else {
         if ((tracev[index_b - gf] == 0) || (tracev[index_b - gf] == 1)) {
-			//printf("has data b !!\n");
+            //printf("has data b !!\n");
             b = tracev[index_b - gf];
         } else {
             //printf("Recursion b !!\n");
@@ -198,7 +261,7 @@ uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, in
 }
 
 void load_int_matrix_csv(const uint8 *file_name, int **A, int m, int n) {
-    uint8 buffer[1024];
+    uint8 buffer[1024*10];
     uint8 *record,*line;
     int i = 0, j = 0;
     FILE *fstream = fopen(file_name,"r");
@@ -229,7 +292,7 @@ void load_uchar_matrix_csv(const uint8 *file_name, uint8 **A, int m, int n) {
         printf("\n file opening failed ");      
         return;
     }
-	//printf("#### loading %s, m = %d, n = %d\n", file_name, m, n);
+    //printf("#### loading %s, m = %d, n = %d\n", file_name, m, n);
     i = 0;
     while ((i < m) && ((line = fgets(buffer, sizeof(buffer), fstream)) != NULL)) {
         record = strtok(line,",");
@@ -238,7 +301,7 @@ void load_uchar_matrix_csv(const uint8 *file_name, uint8 **A, int m, int n) {
             A[i][j++] = atoi(record);
             //if (0 == i && A[i][j-1]) {
             //    printf("$$$$ (%d) \n", j-1);
-			//}
+            //}
             record = strtok(NULL,",");
         }
         i++;
@@ -550,64 +613,4 @@ int compare(uint8 *v1, uint8 *v2, int m) {
         }
     }
     return TRUE;
-}
-
-void exp_type1(int gfield) {
-     int _index;
-     uint8 **S;
-     _index = 0;
-     if (gfield == 5) {
-         S = trino_squaring_matrix(gfield);
-         n_squaring(S,gfield,1,&_index);
-         n_squaring(S,gfield,2,&_index);
-     } else if (gfield == 233) {
-         S = trino_squaring_matrix(gfield);
-         n_squaring(S,gfield,1,&_index);
-         n_squaring(S,gfield,3,&_index);
-         n_squaring(S,gfield,7,&_index);
-         n_squaring(S,gfield,14,&_index);
-         n_squaring(S,gfield,29,&_index);
-         n_squaring(S,gfield,58,&_index);
-         n_squaring(S,gfield,116,&_index);  
-     } else if (gfield == 409) {
-        S = trino_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,3,&_index);
-        n_squaring(S,gfield,6,&_index);
-        n_squaring(S,gfield,12,&_index);
-        n_squaring(S,gfield,25,&_index);
-        n_squaring(S,gfield,51,&_index);
-        n_squaring(S,gfield,102,&_index);
-        n_squaring(S,gfield,204,&_index);     
-     } else if (gfield == 163) {
-        S = penta_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,2,&_index);
-        n_squaring(S,gfield,5,&_index);
-        n_squaring(S,gfield,10,&_index);
-        n_squaring(S,gfield,20,&_index);
-        n_squaring(S,gfield,40,&_index);
-        n_squaring(S,gfield,81,&_index);
-     } else if (gfield == 283) {
-        S = penta_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,2,&_index);
-        n_squaring(S,gfield,4,&_index);
-        n_squaring(S,gfield,8,&_index);
-        n_squaring(S,gfield,17,&_index);
-        n_squaring(S,gfield,35,&_index);
-        n_squaring(S,gfield,70,&_index);
-        n_squaring(S,gfield,141,&_index);       
-     } else if (gfield == 571) {
-        S = penta_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,2,&_index);
-        n_squaring(S,gfield,4,&_index);
-        n_squaring(S,gfield,8,&_index);
-        n_squaring(S,gfield,17,&_index);
-        n_squaring(S,gfield,35,&_index);
-        n_squaring(S,gfield,71,&_index);
-        n_squaring(S,gfield,142,&_index);
-        n_squaring(S,gfield,285,&_index);     
-    }
 }

@@ -16,6 +16,42 @@
 
 typedef unsigned char uint8;
 
+uint8 vhdl_header[] = "----------------------------------------------------------------------------------\n\
+-- Company: Guenda Tecnología de México\n\
+-- Engineer: García-Hernández, Rommel\n\
+-- \n\
+-- Create Date:    23:16:16 08/13/2019 \n\
+-- Design Name: \n\
+-- Module Name:    %s - Behavioral \n\
+-- Project Name: \n\
+-- Target Devices: \n\
+-- Tool versions: \n\
+-- Description: \n\
+--\n\
+-- Dependencies: \n\
+--\n\
+-- Revision: \n\
+-- Revision 0.01 - File Created\n\
+-- Additional Comments: \n\
+--\n\
+----------------------------------------------------------------------------------\n\
+library ieee;\n\
+use ieee.std_logic_1164.all;\n\
+use ieee.numeric_std.all;\n\
+\n\
+entity %s is\n\
+    generic(gf:integer := 5);\n\
+    port(\n\
+        x : in  std_logic_vector(gf-1 downto 0);\n\
+        r : out std_logic_vector(gf-1 downto 0)\n\
+    );\n\
+end %s;\n\
+\n\
+architecture behavioral of %s is\n\
+begin\n";
+
+uint8 vhdl_footer[] = "end behavioral;";
+
 uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, int mt, int nt, int index);
 uint8 **trino_squaring_matrix(int);
 uint8 **penta_squaring_matrix(int);
@@ -29,8 +65,8 @@ uint8 **new_matrix_reduccion_penta(uint8 *, int, int, int, int, int);
 uint8 **squaring_matrix(uint8 **, int, int);
 uint8 *new_array(int );
 int **allocate_int_matrix(int, int);
-void generate(int, uint8 **, int **, int m, int n, int mt, int nt);
-void exp_type1(int);
+int compare(uint8 *, uint8 *, int);
+void multiply(int, int, uint8 **, int **, uint8 *, int m, int n, int mt, int nt, uint8 *);
 void free_uchar_matrix(uint8 **M, int m);
 void free_int_matrix(int **M, int m);
 void show_square_matrix_downto(uint8 **, int);
@@ -44,64 +80,150 @@ int main(int argc, uint8 *argv[]) {
     uint8 wrong_arguments = TRUE;
     uint8 result = FALSE;
     uint8 **A = NULL;
+    uint8 *test_vector = NULL;
+    uint8 *result_vector = NULL;
+    uint8 *gold_vector = NULL;
     uint8 name[128];
     int m = 0, n = 0, mt = 0, nt = 0, gf = 0, el = 0;
     int field = 163, i = 0;
+    int test_number = 0, test_count = 0;
     int **T = NULL;
     
-    if (argc >= 1) {
+    srand(time(NULL));   // Initialization, should only be called once.
+    if (argc >= 3) {
         field = atoi(argv[1]);
         if (field == 5 || field == 163 || field == 233 || field == 283 || field == 409 || field == 571) {
             wrong_arguments = FALSE;
         }
     }
     if (wrong_arguments) {
-        printf("Usage: program 5|163|233|283|409|571 matrix trace \n");
+        printf("Usage: program 5|163|233|283|409|571 <name>_<gf>_<power>.dat\n");
     } else {
-        if (argc >= 4) {
-            sscanf(argv[2],"squaring_matrix_%d_%d_opt_%dx%d.dat", &gf, &el, &m, &n);
-            sscanf(argv[3],"squaring_matrix_%d_%d_trace_%dx%d.dat", &gf, &el, &mt, &nt);
-            printf("reduction m = %d, n = %d. trace m = %d, n = %d\n", m, n, mt, nt);
-            A = allocate_uchar_matrix(m,n);
-            T = allocate_int_matrix(mt,nt);
-            load_uchar_matrix_csv(argv[2],A,m,n);
-            load_int_matrix_csv(argv[3],T,mt,nt);
-            generate(field,A,T,m,n,mt,nt);
-            free_uchar_matrix(A,m);
-            free_int_matrix(T,mt);
+        if (argc >= 3) {
+            for (test_number = 2, test_count = 1; test_number < argc; test_number += 1, test_count++) {
+                sscanf(argv[test_number],"squaring_matrix_%d_%d.dat", &gf, &el);
+                m = gf;
+                n = gf;
+                printf("reduction m = %d, n = %d.\n", m, n);
+                A = allocate_uchar_matrix(m,n);
+                load_uchar_matrix_csv(argv[test_number],A,m,n);
+                multiply(field,el,A,T,test_vector,m,n,mt,nt,result_vector);
+                free_uchar_matrix(A,m);
+            }
         }
-    }    
+    }
+
+    // free allocated memory
+    if (result_vector) {
+        free(result_vector);
+    }
+    if (test_vector) {
+        free(test_vector);
+    }
+    if (gold_vector) {
+        free(gold_vector);
+    }
+    
     return 0;
 }
 
-void generate(int gf, uint8 **A, int **Trace, int m, int n, int mt, int nt) {
-    int i = 0, j = 0, idx = 0;
+void multiply(int gf, int exp, uint8 **A, int **Trace, uint8 *testv, int m, int n, int mt, int nt, uint8 *resultv) {
+    int i = 0, j = 0, idx = 0, xt0_idx = 0, xt1_idx = 0, var_counter = 0;
     int limit_m, limit_n;
-    uint8 a, b;
+    FILE *fp = NULL;
+    char file_name[64] = "";
+    char entity_name[64] = "";
+    char xt0[10],xt1[10];
+    uint8 a, b, generate_code = FALSE;
+    
     limit_m = (m > gf)?m:gf;
     limit_n = (n > gf)?n:gf;
-    if (Trace) {
-        printf("Construct trace vector with m = %d, n = %d\n", mt, nt);
-        for (idx = 0; idx < mt; idx++) {
-            printf("x_%d <= x_%d xor x_%d \n", idx, Trace[idx][0], Trace[idx][1]);
-        }
+
+    if (A) {generate_code = TRUE;}
+    if (generate_code) {
+        sprintf(file_name,"squaring_block_%d_%d.vhd",gf,exp);
+        sprintf(entity_name,"squaring_block_%d_%d",gf,exp);
+    printf("generated %s.\n", file_name);
+    fp = fopen(file_name, "w+");
+        fprintf(fp,vhdl_header,entity_name,entity_name,entity_name,entity_name);
     }
-    for (i = 0; i < limit_m; i++) {
-		printf("r_%d <= ", i);
-        if (1 == A[i][0]) {
-            printf("x_0 ");
-        }
-        for (j = 1; j < limit_n; j++) {
+    
+    for (i = 0; i < m; i++) {
+        var_counter = 0;
+        fprintf(fp,"    r(%d) <= ",i);
+        for (j = 0; j < n-1; j++) {
             if (1 == A[i][j]) {
-                printf("xor x_%d ", j);
+                if (var_counter != 0) {
+                    fputs(" xor ",fp);
+                }
+                if (j < gf) {
+                    fprintf(fp,"x(%d)",j);
+                } else {
+                    fprintf(fp,"xt(%d)",j-gf);
+                }
+                var_counter++;
             }
         }
-		printf(";\n");
+        if (1 == A[i][j]) {
+            if (var_counter != 0) {
+                fputs(" xor ",fp);
+            }
+            if (j < gf) {
+                fprintf(fp,"x(%d)",j);
+            } else {
+                fprintf(fp,"xt(%d)",j-gf);
+            }
+        }
+        fprintf(fp,";\n",i);
+    }
+    if(generate_code && fp){
+        fputs(vhdl_footer,fp);
+        fclose(fp);
     }
 }
 
+uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, int mt, int nt, int index) {
+    int i, index_a, index_b;
+    uint8 a, b;
+    /*
+    if ((index-163) < 0 || (index-163) >= mt) {
+        printf("Error. index = %d", (index-163));
+    }
+    */
+    index_a = Trace[index][0];
+    index_b = Trace[index][1];
+    if (index_a < gf) {
+        a = testv[index_a];
+        //printf("%d ", index_a);
+    } else {
+        if ((0 == tracev[index_a - gf]) || (1 == tracev[index_a - gf])) {
+            //printf("has data a !!\n");
+            a = tracev[index_a - gf];
+        } else {
+            //printf("Recursion a !!\n");
+            a = compute_trace_element(gf, Trace, tracev, testv, mt, nt, index_a - gf);
+            //tracev[index_a - gf] = a;
+        }
+    }
+    if (index_b < gf) {
+        b = testv[index_b];
+        //printf("%d ", index_b);
+    } else {
+        if ((tracev[index_b - gf] == 0) || (tracev[index_b - gf] == 1)) {
+            //printf("has data b !!\n");
+            b = tracev[index_b - gf];
+        } else {
+            //printf("Recursion b !!\n");
+            b = compute_trace_element(gf, Trace, tracev, testv, mt, nt, index_b - gf);
+            //tracev[index_b - gf] = b;
+        }
+    }
+    tracev[index] = a ^ b;
+    return a ^ b;
+}
+
 void load_int_matrix_csv(const uint8 *file_name, int **A, int m, int n) {
-    uint8 buffer[1024];
+    uint8 buffer[1024*10];
     uint8 *record,*line;
     int i = 0, j = 0;
     FILE *fstream = fopen(file_name,"r");
@@ -132,7 +254,7 @@ void load_uchar_matrix_csv(const uint8 *file_name, uint8 **A, int m, int n) {
         printf("\n file opening failed ");      
         return;
     }
-	//printf("#### loading %s, m = %d, n = %d\n", file_name, m, n);
+    //printf("#### loading %s, m = %d, n = %d\n", file_name, m, n);
     i = 0;
     while ((i < m) && ((line = fgets(buffer, sizeof(buffer), fstream)) != NULL)) {
         record = strtok(line,",");
@@ -141,7 +263,7 @@ void load_uchar_matrix_csv(const uint8 *file_name, uint8 **A, int m, int n) {
             A[i][j++] = atoi(record);
             //if (0 == i && A[i][j-1]) {
             //    printf("$$$$ (%d) \n", j-1);
-			//}
+            //}
             record = strtok(NULL,",");
         }
         i++;
@@ -444,62 +566,13 @@ uint8 **producto_matrices_cuadradas(uint8 **A, uint8 **B, int m) {
     return R;
 }
 
-void exp_type1(int gfield) {
-     int _index;
-     uint8 **S;
-     _index = 0;
-     if (gfield == 5) {
-         S = trino_squaring_matrix(gfield);
-         n_squaring(S,gfield,1,&_index);
-         n_squaring(S,gfield,2,&_index);
-     } else if (gfield == 233) {
-         S = trino_squaring_matrix(gfield);
-         n_squaring(S,gfield,1,&_index);
-         n_squaring(S,gfield,3,&_index);
-         n_squaring(S,gfield,7,&_index);
-         n_squaring(S,gfield,14,&_index);
-         n_squaring(S,gfield,29,&_index);
-         n_squaring(S,gfield,58,&_index);
-         n_squaring(S,gfield,116,&_index);  
-     } else if (gfield == 409) {
-        S = trino_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,3,&_index);
-        n_squaring(S,gfield,6,&_index);
-        n_squaring(S,gfield,12,&_index);
-        n_squaring(S,gfield,25,&_index);
-        n_squaring(S,gfield,51,&_index);
-        n_squaring(S,gfield,102,&_index);
-        n_squaring(S,gfield,204,&_index);     
-     } else if (gfield == 163) {
-        S = penta_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,2,&_index);
-        n_squaring(S,gfield,5,&_index);
-        n_squaring(S,gfield,10,&_index);
-        n_squaring(S,gfield,20,&_index);
-        n_squaring(S,gfield,40,&_index);
-        n_squaring(S,gfield,81,&_index);
-     } else if (gfield == 283) {
-        S = penta_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,2,&_index);
-        n_squaring(S,gfield,4,&_index);
-        n_squaring(S,gfield,8,&_index);
-        n_squaring(S,gfield,17,&_index);
-        n_squaring(S,gfield,35,&_index);
-        n_squaring(S,gfield,70,&_index);
-        n_squaring(S,gfield,141,&_index);       
-     } else if (gfield == 571) {
-        S = penta_squaring_matrix(gfield);
-        n_squaring(S,gfield,1,&_index);
-        n_squaring(S,gfield,2,&_index);
-        n_squaring(S,gfield,4,&_index);
-        n_squaring(S,gfield,8,&_index);
-        n_squaring(S,gfield,17,&_index);
-        n_squaring(S,gfield,35,&_index);
-        n_squaring(S,gfield,71,&_index);
-        n_squaring(S,gfield,142,&_index);
-        n_squaring(S,gfield,285,&_index);     
+int compare(uint8 *v1, uint8 *v2, int m) {
+    int i;
+    for (i = 0; i < m; i++) {
+        if (v1[i] != v2[i]) {
+            printf("v1[%d] = %d and v2[%d] = %d\n", i, v1[i], i, v2[i]);
+            return FALSE;
+        }
     }
+    return TRUE;
 }
