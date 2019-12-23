@@ -4,11 +4,11 @@ use ieee.std_logic_arith.all;
 use ieee.std_logic_unsigned.all;
 
 entity nokoa is
-generic (M: integer:= 5);
-port (
-  a, b: in std_logic_vector(M-1 downto 0);
-  d: out std_logic_vector(2*M-2 downto 0)
-);
+    generic (M: integer:= 5);
+    port (
+      a, b: in std_logic_vector(M-1 downto 0);
+      d: out std_logic_vector(2*M-2 downto 0)
+    );
 end nokoa;
 
 architecture simple of nokoa is
