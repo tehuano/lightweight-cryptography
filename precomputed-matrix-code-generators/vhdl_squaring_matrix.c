@@ -143,24 +143,20 @@ void multiply(int gf, int exp, uint8 **A, int **Trace, uint8 *testv, int m, int 
     if (generate_code) {
         sprintf(file_name,"squaring_block_%d_%d.vhd",gf,exp);
         sprintf(entity_name,"squaring_block_%d_%d",gf,exp);
-    printf("generated %s.\n", file_name);
-    fp = fopen(file_name, "w+");
+        printf("generated %s.\n", file_name);
+        fp = fopen(file_name, "w+");
         fprintf(fp,vhdl_header,entity_name,entity_name,entity_name,entity_name);
     }
     
     for (i = 0; i < m; i++) {
         var_counter = 0;
         fprintf(fp,"    r(%d) <= ",i);
-        for (j = 0; j < n-1; j++) {
+        for (j = n-1; j > 0; j--) {
             if (1 == A[i][j]) {
                 if (var_counter != 0) {
                     fputs(" xor ",fp);
                 }
-                if (j < gf) {
-                    fprintf(fp,"x(%d)",j);
-                } else {
-                    fprintf(fp,"xt(%d)",j-gf);
-                }
+                fprintf(fp,"x(%d)",j);
                 var_counter++;
             }
         }
@@ -168,11 +164,7 @@ void multiply(int gf, int exp, uint8 **A, int **Trace, uint8 *testv, int m, int 
             if (var_counter != 0) {
                 fputs(" xor ",fp);
             }
-            if (j < gf) {
-                fprintf(fp,"x(%d)",j);
-            } else {
-                fprintf(fp,"xt(%d)",j-gf);
-            }
+            fprintf(fp,"x(%d)",j);
         }
         fprintf(fp,";\n",i);
     }
@@ -185,11 +177,6 @@ void multiply(int gf, int exp, uint8 **A, int **Trace, uint8 *testv, int m, int 
 uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, int mt, int nt, int index) {
     int i, index_a, index_b;
     uint8 a, b;
-    /*
-    if ((index-163) < 0 || (index-163) >= mt) {
-        printf("Error. index = %d", (index-163));
-    }
-    */
     index_a = Trace[index][0];
     index_b = Trace[index][1];
     if (index_a < gf) {

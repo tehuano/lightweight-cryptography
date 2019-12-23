@@ -262,12 +262,12 @@ uint8 compute_trace_element(int gf, int **Trace, uint8 *tracev, uint8 *testv, in
 }
 
 void load_int_matrix_csv(const uint8 *file_name, int **A, int m, int n) {
-    uint8 buffer[1024*10];
+    uint8 buffer[1024*20];
     uint8 *record,*line;
     int i = 0, j = 0;
     FILE *fstream = fopen(file_name,"r");
     if (fstream == NULL) {
-        printf("\n file opening failed ");      
+        printf("# file opening failed > %s\n", file_name);      
         return;
     }
     //printf("#### loading %s, m = %d, n = %d\n", file_name, m, n);
@@ -285,12 +285,12 @@ void load_int_matrix_csv(const uint8 *file_name, int **A, int m, int n) {
 }
 
 void load_uchar_matrix_csv(const uint8 *file_name, uint8 **A, int m, int n) {
-    uint8 buffer[1024*10] ;   
+    uint8 buffer[1024*20] ;   
     uint8 *record,*line;   
     int i = 0, j = 0;
     FILE *fstream = fopen(file_name,"r");
     if (fstream == NULL) {
-        printf("\n file opening failed ");      
+        printf("# file opening failed > %s\n", file_name); 
         return;
     }
     //printf("#### loading %s, m = %d, n = %d\n", file_name, m, n);
